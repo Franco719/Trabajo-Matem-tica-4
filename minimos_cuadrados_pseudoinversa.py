@@ -8,12 +8,6 @@ from math import isnan
 
 # ------------- Config -------------
 INPUT_CSV = "csvbueno.csv"
-# Parámetros de descenso del gradiente
-ALPHA = 0.01
-N_ITER = 2900
-# Nombre del docx de salida
-DOCX_FILENAME = "regression_multivar_report.docx"
-# -----------------------------------
 
 # ----------------------------
 # 1) Leer CSV probando encodings
@@ -70,53 +64,22 @@ def correct_hp_column(valor):
 
 def extract_cc(valor):
     """
-    Convierte CC textual a número en cc:
-    - "1.2L" -> 1200
-    - "1,200 cc" -> 1200
-    - "3990 cc" -> 3990
-    - Si detecta 'kw' o 'battery' devuelve NaN (eliminar eléctricos)
-    - Si hay rango promedia
+    Extrae el primer número encontrado en la cadena `valor`.
+    Acepta formatos con comas como "1,200 cc" o rangos "1,000 - 2,000 cc" o "1798 / 1987 cc + batt".
+    Devuelve float (sin separadores) o np.nan si no encuentra números.
     """
-    if pd.isna(valor):
+    if valor is None:
         return np.nan
-    s = str(valor).lower()
-    if "kw" in s or "battery" in s:
+    s = str(valor)
+    # buscar números con posible separador de miles y decimales
+    m = re.search(r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+)(?=[^\d]|$)", s)
+    if not m:
         return np.nan
-    # litros: "1.2 l" o "1.2l"
-    m_l = re.search(r"(\d*[\.,]?\d+)\s*l\b", s)
-    if m_l:
-        try:
-            litros = float(m_l.group(1).replace(",", "."))
-            return litros * 1000.0
-        except:
-            pass
-    # buscar ocurrencias con cc
-    nums = re.findall(r"[-+]?\d*[\.,]?\d+", s)
-    if not nums:
+    num = m.group(0).replace(',', '')
+    try:
+        return float(num)
+    except Exception:
         return np.nan
-    # convertimos y si detectamos que hay formatos de miles (con comas) quitamos comas
-    nums_clean = []
-    for x in nums:
-        x_clean = x.replace(",", ".")
-        try:
-            nums_clean.append(float(x_clean))
-        except:
-            try:
-                nums_clean.append(float(x.replace(",", "")))
-            except:
-                pass
-    if not nums_clean:
-        return np.nan
-    # si hay más de 1 número (rango), promediamos; además si los números parecen pequeños (<50) y
-    # no tenían L/cc, podríamos interpretarlos como litros -> multiplicar por 1000
-    avg = sum(nums_clean) / len(nums_clean)
-    # heurística: si avg < 50 -> puede estar en L (ej 1.2 -> 1.2 L), multiplicamos por 1000
-    if avg < 50:
-        # pero solo si en el texto aparece 'l' o no aparece 'cc'. Hacemos condición liviana:
-        if 'l' in s and 'cc' not in s:
-            return avg * 1000.0
-        # si no hay 'cc' ni 'l' y avg < 50, preferimos devolver avg*1000? mejor no asumir: devolvemos avg*1000 solo si 'l' presente
-    return avg
 
 def extract_torque(valor):
     """Extrae número representativo de Torque (promedia rangos)."""
@@ -181,7 +144,7 @@ df_model = df.loc[mask_hp, [col_hp, col_cc, col_torque, col_ts]].dropna().reset_
 #print(f"Filas disponibles para el modelo (después de imputación y dropna final): {df_model.shape[0]}")
 
 if df_model.shape[0] < 3:
-    raise ValueError("Pocos datos para ajustar regresión múltiple (menos de 3 filas). Revisa limpieza.")
+    raise ValueError("Pocos datos para ajustar regresión múltiple (menos de 3 filas)")
 
 # ----------------------------
 # 5) Preparar X, y (ya no necesitamos normalizar)
@@ -218,3 +181,9 @@ print(f"b3 (x3 Torque) = {b3:.6f}")
 print(f"Ecuación: Y = {b0:.4f} + {b1:.4f}*x1 + {b2:.4f}*x2 + {b3:.4f}*x3")
 print(f"R² = {R2_model:.6f}")
 print(f"SSE = {SSE:.4f}, SSR = {SSR:.4f}, SST = {SST:.4f}")
+
+# ----------------------------
+# 8) imprimir la matriz de correlación para reporte
+# ----------------------------
+print("\nMatriz de correlación (variables usadas):")
+print(df_model[[col_hp, col_cc, col_torque, col_ts]].corr().to_string())

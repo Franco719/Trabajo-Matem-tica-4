@@ -1,4 +1,3 @@
-# ...existing code...
 import pandas as pd
 import re
 import numpy as np
@@ -40,7 +39,7 @@ def correct_hp_column(valor):
         return float(valor)
     except Exception:
         return np.nan
-# ...existing code...
+
 # Limpieza y conversión de las columnas de interés
 x_col = 'HorsePower'
 y_col = 'Total Speed'
@@ -210,7 +209,7 @@ if cc_missing == 0:
     X_cc = cc_in_mask.astype(float)
     report_cc_same_n = fit_and_report(X_cc.values, Y_original.values, label='CC (first number) — same n')
 else:
-    # (A) Ajuste con filas válidas donde CC existe
+    # Ajuste con filas válidas donde CC existe
     X_cc_valid = cc_in_mask.dropna().astype(float)
     Y_cc_valid = df.loc[cc_in_mask.dropna().index, y_col].astype(float)
     report_valid = fit_and_report(X_cc_valid.values, Y_cc_valid.values, label='CC (only rows with CC)')
@@ -218,7 +217,7 @@ else:
     x_bar_cc_valid = X_cc_valid.mean() if len(X_cc_valid) > 0 else np.nan
     print(f"x̄ CC (filas válidas) = {x_bar_cc_valid:.4f}")
 
-    # (B) Ajuste con imputación por mediana para conservar n (opcional)
+    # Ajuste con imputación por mediana para conservar n
     median_cc = cc_in_mask.median()
     print(f"Mediana CC (para imputación): {median_cc}")
     X_cc_imputed = cc_in_mask.fillna(median_cc).astype(float)
@@ -280,7 +279,7 @@ else:
     x_bar_torque_valid = X_torque_valid.mean() if len(X_torque_valid) > 0 else np.nan
     print(f"x̄ Torque (filas válidas) = {x_bar_torque_valid:.4f}")
 
-    # B) Imputación por mediana para conservar n
+    # Imputación por mediana para conservar n
     median_torque = torque_in_mask.median()
     print(f"Mediana Torque (para imputación): {median_torque}")
     X_torque_imputed = torque_in_mask.fillna(median_torque).astype(float)
@@ -289,119 +288,3 @@ else:
     print(f"x̄ Torque (después imputación) = {x_bar_torque_imputed:.4f}")
 
     print('\nAdvertencia: hay', torque_missing, 'filas sin número extraído en Torque entre las filas originales.')
-
-# ----------------------
-# Generar documento Word con los cálculos
-# ----------------------
-docx_filename = 'regression_report.docx'
-try:
-    from docx import Document
-    from docx.shared import Pt
-
-    doc = Document()
-    doc.add_heading('Reporte de regresión lineal', level=1)
-
-    # Fecha y contexto
-    doc.add_paragraph(f'Dataset: csvbueno.csv')
-    doc.add_paragraph(f'n (filas usadas por HorsePower) = {n_hp}')
-
-    # Sección HorsePower
-    doc.add_heading('1) Predictora: HorsePower', level=2)
-    p = doc.add_paragraph()
-    p.add_run('Modelo: ').bold = True
-    p.add_run('y_i = β0 + β1 x_i + ε_i')
-    doc.add_paragraph('Fórmulas y resultados:')
-    doc.add_paragraph('x̄ = (1/n) Σ x_i  → {:.4f}'.format(x_bar))
-    doc.add_paragraph('ȳ = (1/n) Σ y_i  → {:.4f}'.format(y_bar))
-    doc.add_paragraph('Sxy = Σ (x_i − x̄)(y_i − ȳ)  → {:.4f}'.format(Sxy))
-    doc.add_paragraph('Sxx = Σ (x_i − x̄)^2  → {:.4f}'.format(Sxx))
-    doc.add_paragraph('Syy = Σ (y_i − ȳ)^2  → {:.4f}'.format(Syy))
-    doc.add_paragraph('b1 = Sxy / Sxx  → {:.6f}'.format(B1))
-    doc.add_paragraph('b0 = ȳ − b1 x̄  → {:.6f}'.format(B0))
-    doc.add_paragraph('SSR = Σ (ŷ_i − ȳ)^2  → {:.4f}'.format(SSR))
-    doc.add_paragraph('SSE = Σ (y_i − ŷ_i)^2  → {:.4f}'.format(SSE))
-    doc.add_paragraph('R² = SSR / Syy  → {:.4f}'.format(R2))
-
-    # Sección CC (imputada por mediana para conservar n)
-    doc.add_heading('2) Predictora: CC/Battery Capacity (extracción e imputación por mediana)', level=2)
-    doc.add_paragraph('Regresión usando imputación por mediana para conservar n (misma Y):')
-    if 'report_imputed' in globals():
-        r = report_imputed
-    elif 'report_cc_same_n' in globals():
-        r = report_cc_same_n
-    else:
-        r = None
-
-    if r is not None:
-        doc.add_paragraph('Se usó la primera ocurrencia numérica en la columna CC/Battery Capacity. Si faltaba, se imputó la mediana entre las filas originales.')
-        doc.add_paragraph('Mediana usada para imputación: {}'.format(median_cc if 'median_cc' in globals() else 'N/A'))
-        # agregar medias de CC al informe
-        try:
-            doc.add_paragraph('x̄ CC (filas válidas) = {:.4f}'.format(x_bar_cc_valid))
-        except Exception:
-            pass
-        try:
-            doc.add_paragraph('x̄ CC (después imputación) = {:.4f}'.format(x_bar_cc_imputed))
-        except Exception:
-            pass
-        doc.add_paragraph('n = {}'.format(r['n']))
-        doc.add_paragraph('Sxy = {:.4f}'.format(r['Sxy']))
-        doc.add_paragraph('Sxx = {:.4f}'.format(r['Sxx']))
-        doc.add_paragraph('Syy = {:.4f}'.format(r['Syy']))
-        doc.add_paragraph('b1 = Sxy / Sxx  → {:.6f}'.format(r['b1']))
-        doc.add_paragraph('b0 = ȳ − b1 x̄  → {:.6f}'.format(r['b0']))
-        doc.add_paragraph('SSR = {:.4f}'.format(r['SSR']))
-        doc.add_paragraph('SSE = {:.4f}'.format(r['SSE']))
-        doc.add_paragraph('R² = {:.4f}'.format(r['R2']))
-    else:
-        doc.add_paragraph('No se pudo calcular la regresión CC para informe (faltan resultados).')
-
-    # Sección Torque
-    doc.add_heading('3) Predictora: Torque (extracción e imputación por mediana)', level=2)
-    doc.add_paragraph('Regresión usando Torque como predictora. Si faltaban valores, se muestra la regresión sólo con filas válidas y otra con imputación por mediana para conservar n.')
-    # seleccionar el informe preferido: imputado si existe, sino same_n, sino válido
-    if 'report_torque_imputed' in globals():
-        tr = report_torque_imputed
-    elif 'report_torque_same_n' in globals():
-        tr = report_torque_same_n
-    elif 'report_torque_valid' in globals():
-        tr = report_torque_valid
-    else:
-        tr = None
-
-    if tr is not None:
-        try:
-            doc.add_paragraph('Mediana usada para imputación: {}'.format(median_torque if 'median_torque' in globals() else 'N/A'))
-        except Exception:
-            pass
-        try:
-            doc.add_paragraph('x̄ Torque (filas válidas) = {:.4f}'.format(x_bar_torque_valid))
-        except Exception:
-            pass
-        try:
-            doc.add_paragraph('x̄ Torque (después imputación) = {:.4f}'.format(x_bar_torque_imputed))
-        except Exception:
-            pass
-        doc.add_paragraph('n = {}'.format(tr['n']))
-        doc.add_paragraph('Sxy = {:.4f}'.format(tr['Sxy']))
-        doc.add_paragraph('Sxx = {:.4f}'.format(tr['Sxx']))
-        doc.add_paragraph('Syy = {:.4f}'.format(tr['Syy']))
-        doc.add_paragraph('b1 = Sxy / Sxx  → {:.6f}'.format(tr['b1']))
-        doc.add_paragraph('b0 = ȳ − b1 x̄  → {:.6f}'.format(tr['b0']))
-        doc.add_paragraph('SSR = {:.4f}'.format(tr['SSR']))
-        doc.add_paragraph('SSE = {:.4f}'.format(tr['SSE']))
-        doc.add_paragraph('R² = {:.4f}'.format(tr['R2']))
-    else:
-        doc.add_paragraph('No se pudo calcular la regresión Torque para informe (faltan resultados).')
-
-    # Guardar documento
-    doc.save(docx_filename)
-    print(f"Documento Word guardado en {docx_filename}")
-except Exception as e:
-    print('\nNo se pudo generar el documento Word automáticamente. Para generar el .docx instalá python-docx en el venv:')
-    print('source .venv/bin/activate && pip install python-docx')
-    print('Error detalle:', e)
-
-
-
-# ...existing code...

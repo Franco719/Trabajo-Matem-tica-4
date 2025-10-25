@@ -9,10 +9,8 @@ from math import isnan
 # ------------- Config -------------
 INPUT_CSV = "csvbueno.csv"
 # Parámetros de descenso del gradiente
-ALPHA = 0.1
-N_ITER = 433
-# Nombre del docx de salida
-DOCX_FILENAME = "regression_multivar_report.docx"
+ALPHA = 0.01
+N_ITER = 4517
 # -----------------------------------
 
 # ----------------------------
@@ -70,54 +68,23 @@ def correct_hp_column(valor):
 
 def extract_cc(valor):
     """
-    Convierte CC textual a número en cc:
-    - "1.2L" -> 1200
-    - "1,200 cc" -> 1200
-    - "3990 cc" -> 3990
-    - Si detecta 'kw' o 'battery' devuelve NaN (eliminar eléctricos)
-    - Si hay rango promedia
+    Extrae el primer número encontrado en la cadena `valor`.
+    Acepta formatos con comas como "1,200 cc" o rangos "1,000 - 2,000 cc" o "1798 / 1987 cc + batt".
+    Devuelve float (sin separadores) o np.nan si no encuentra números.
     """
-    if pd.isna(valor):
+    if valor is None:
         return np.nan
-    s = str(valor).lower()
-    if "kw" in s or "battery" in s:
+    s = str(valor)
+    # buscar números con posible separador de miles y decimales
+    m = re.search(r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+)(?=[^\d]|$)", s)
+    if not m:
         return np.nan
-    # litros: "1.2 l" o "1.2l"
-    m_l = re.search(r"(\d*[\.,]?\d+)\s*l\b", s)
-    if m_l:
-        try:
-            litros = float(m_l.group(1).replace(",", "."))
-            return litros * 1000.0
-        except:
-            pass
-    # buscar ocurrencias con cc
-    nums = re.findall(r"[-+]?\d*[\.,]?\d+", s)
-    if not nums:
+    num = m.group(0).replace(',', '')
+    try:
+        return float(num)
+    except Exception:
         return np.nan
-    # convertimos y si detectamos que hay formatos de miles (con comas) quitamos comas
-    nums_clean = []
-    for x in nums:
-        x_clean = x.replace(",", ".")
-        try:
-            nums_clean.append(float(x_clean))
-        except:
-            try:
-                nums_clean.append(float(x.replace(",", "")))
-            except:
-                pass
-    if not nums_clean:
-        return np.nan
-    # si hay más de 1 número (rango), promediamos; además si los números parecen pequeños (<50) y
-    # no tenían L/cc, podríamos interpretarlos como litros -> multiplicar por 1000
-    avg = sum(nums_clean) / len(nums_clean)
-    # heurística: si avg < 50 -> puede estar en L (ej 1.2 -> 1.2 L), multiplicamos por 1000
-    if avg < 50:
-        # pero solo si en el texto aparece 'l' o no aparece 'cc'. Hacemos condición liviana:
-        if 'l' in s and 'cc' not in s:
-            return avg * 1000.0
-        # si no hay 'cc' ni 'l' y avg < 50, preferimos devolver avg*1000? mejor no asumir: devolvemos avg*1000 solo si 'l' presente
-    return avg
-
+    
 def extract_torque(valor):
     """Extrae número representativo de Torque (promedia rangos)."""
     return to_numeric_general(valor)
@@ -181,7 +148,7 @@ df_model = df.loc[mask_hp, [col_hp, col_cc, col_torque, col_ts]].dropna().reset_
 #print(f"Filas disponibles para el modelo (después de imputación y dropna final): {df_model.shape[0]}")
 
 if df_model.shape[0] < 3:
-    raise ValueError("Pocos datos para ajustar regresión múltiple (menos de 3 filas). Revisa limpieza.")
+    raise ValueError("Pocos datos para ajustar regresión múltiple (menos de 3 filas)")
 
 # ----------------------------
 # 5) Preparar X, y y normalizar
@@ -261,72 +228,9 @@ print(f"b3 (x3 Torque) = {b3:.6f}")
 print(f"Ecuación: Y = {b0:.4f} + {b1:.4f}*x1 + {b2:.4f}*x2 + {b3:.4f}*x3")
 print(f"R² = {R2_model:.6f}")
 print(f"SSE = {SSE:.4f}, SSR = {SSR:.4f}, SST = {SST:.4f}")
-"""
+
 # ----------------------------
-# 8) Guardar informe Word (sin gráficos) - usando python-docx
-# ----------------------------
-try:
-    from docx import Document
-    from docx.shared import Pt
-
-    doc = Document()
-    doc.add_heading('Reporte: Regresión Lineal Múltiple (Descenso del Gradiente)', level=1)
-    doc.add_paragraph(f'Dataset: {INPUT_CSV}')
-    doc.add_paragraph(f'Filas usadas (mask_hp originalmente): {n_hp}    Filas para modelo después limpieza: {df_model.shape[0]}')
-    doc.add_paragraph('Variables:')
-    doc.add_paragraph('Y = Velocidad Final (Total Speed)')
-    doc.add_paragraph('x1 = HorsePower')
-    doc.add_paragraph('x2 = CC/Battery Capacity (cc)')
-    doc.add_paragraph('x3 = Torque')
-
-    doc.add_heading('Coeficientes (unidades reales)', level=2)
-    table = doc.add_table(rows=1, cols=2)
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'Coeficiente'
-    hdr_cells[1].text = 'Valor'
-    for name, val in [('b0 (intercepto)', b0), ('b1 (x1 HorsePower)', b1), ('b2 (x2 CC)', b2), ('b3 (x3 Torque)', b3)]:
-        r = table.add_row().cells
-        r[0].text = name
-        r[1].text = f"{val:.6f}"
-
-    doc.add_paragraph('')
-    doc.add_heading('Ecuación del modelo', level=2)
-    doc.add_paragraph(f"Ŷ = {b0:.4f} + {b1:.4f}·x1 + {b2:.4f}·x2 + {b3:.4f}·x3")
-
-    doc.add_heading('Medidas de ajuste', level=2)
-    doc.add_paragraph(f"R² = {R2_model:.6f}")
-    doc.add_paragraph(f"SST = {SST:.4f}")
-    doc.add_paragraph(f"SSR = {SSR:.4f}")
-    doc.add_paragraph(f"SSE = {SSE:.4f}")
-
-    doc.add_heading('Análisis automático (breve)', level=2)
-    # Generar análisis simple
-    analisis = []
-    analisis.append("El mejor predictor individual previamente observado fue HorsePower (x1).")
-    if b1 > 0:
-        analisis.append("El coeficiente b1 positivo indica que, manteniendo las demás variables constantes, un aumento de x1 tiende a aumentar la velocidad final.")
-    else:
-        analisis.append("El coeficiente b1 negativo/pequeño indica que el efecto de x1 no es claramente positivo en presencia de las otras variables (posible multicolinealidad).")
-    analisis.append(f"El R² del modelo es {R2_model:.3f}, lo que indica la fracción de varianza de Y explicada por las tres variables.")
-    # multicolinealidad simple: corrs
-    corrs = df_model[[col_hp, col_cc, col_torque, col_ts]].corr()
-    analisis.append("Se observan correlaciones importantes entre predictores, lo que sugiere multicolinealidad y posible inestabilidad de coeficientes.")
-    for linea in analisis:
-        doc.add_paragraph(linea)
-
-    doc.add_paragraph('')
-    doc.add_paragraph('NOTA: Se usó imputación por mediana para CC y Torque en las filas inicialmente con HorsePower y Total Speed presentes, para conservar n y permitir comparación con regresión simple.')
-
-    doc.save(DOCX_FILENAME)
-    print(f"\nInforme guardado en {DOCX_FILENAME}")
-except Exception as e:
-    print("\nNo se pudo generar el .docx automáticamente. Instala python-docx (pip install python-docx) si querés la salida en Word.")
-    print("Error detalle:", e)
-"""
-# ----------------------------
-# 9) (Opcional) imprimir la matriz de correlación para reporte
+# 8) imprimir la matriz de correlación para reporte
 # ----------------------------
 print("\nMatriz de correlación (variables usadas):")
 print(df_model[[col_hp, col_cc, col_torque, col_ts]].corr().to_string())
-
-# Fin del script
